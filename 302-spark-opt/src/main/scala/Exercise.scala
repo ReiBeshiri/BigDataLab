@@ -130,7 +130,28 @@ object Exercise extends App {
   def exercise3(sc: SparkContext): Unit = {
     val rddWeather = sc.textFile("hdfs:/bigdata/dataset/weather-sample").map(WeatherData.extract)
     val rddStation = sc.textFile("hdfs:/bigdata/dataset/weather-info/stations.csv").map(StationData.extract)
+    //.map(x => (x.usaf + x.wban, (x.country,x.elevation)))
+    import org.apache.spark.HashPartitioner
+    val p = new HashPartitioner(8)
 
+    val weatherCache = rddWeather
+                        .filter(_.temperature<999)
+                        .map(x => (x.usaf + x.wban, x.temperature))
+                        .partitionBy(p)
+                        .cache()
+
+    val rddJoin = rddStation
+                    .map(x => (x.usaf + x.wban, (x.name, x.country)))
+                    .partitionBy(p)
+                    .join(weatherCache)
+                    .cache()
+
+    //max temp per ogni città
+    val maxTempCache = rddJoin
+                        .map({ case(k, ((name,country),temperature)) => ((name, country) ,temperature) })
+                        .reduceByKey((x,y)=>{if(x<y) y else x})
+                        .collect()
+    
     // TODO exercise
   }
 
